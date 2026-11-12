@@ -1,5 +1,6 @@
 # Pipeline complet : `docker compose up -d --build`, puis http://localhost:3000
-# Les identifiants Postgres ont des valeurs par défaut ; les surcharger dans un fichier .env.
+# Les identifiants Postgres ont des valeurs par défaut ; les surcharger dans un fichier .env
+# (modèle : .env.example), comme le webhook des alertes.
 
 x-dagster: &dagster
   build: .
@@ -10,6 +11,8 @@ x-dagster: &dagster
     DAGSTER_PG_USER: ${DAGSTER_PG_USER:-dagster}
     DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD:-dagster}
     DAGSTER_PG_DB: ${DAGSTER_PG_DB:-dagster}
+    # Webhook Discord ou Slack des alertes qualité (contrôles faux, runs en échec) : dans .env.
+    GAZETTE_ALERTE_WEBHOOK: ${GAZETTE_ALERTE_WEBHOOK:-}
   volumes:
     - dagster_storage:/opt/dagster/storage
   depends_on:

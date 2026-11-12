@@ -109,7 +109,7 @@ def test_migration_sources_creee_une_seule_fois(tmp_path):
     } <= colonnes  # fmt: skip
     assert db.migrer(connexion) == []  # déjà appliquée : rien à refaire
     versions = [v for (v,) in connexion.execute("SELECT version FROM schema_migrations")]
-    assert versions == [1]
+    assert versions == [1, 2]
     connexion.close()
 
 
@@ -134,7 +134,7 @@ def test_premier_demarrage_huit_sources_en_parallele_sur_une_base_neuve(tmp_path
 
     assert erreurs == []
     with closing(sqlite3.connect(tmp_path / db.NOM_BASE)) as connexion:
-        assert [v for (v,) in connexion.execute("SELECT version FROM schema_migrations")] == [1]
+        assert [v for (v,) in connexion.execute("SELECT version FROM schema_migrations")] == [1, 2]
 
 
 def test_decoupage_du_script_de_migration():

@@ -1,0 +1,322 @@
+[
+  {
+    "id": "propre-1",
+    "source": "le_monde",
+    "flux": "une",
+    "lien": "https://www.lemonde.fr/politique/budget-secu.html",
+    "titre": "Le Parlement adopte le budget de la Sécurité sociale après un long débat",
+    "resume": "Les députés ont voté le texte en dernière lecture.",
+    "publie_le": "2026-11-12T05:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-1"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "propre-html",
+    "source": "le_figaro",
+    "flux": "une",
+    "lien": "https://le_figaro.fr/article/propre-html",
+    "titre": "Les &eacute;lus votent <b>la r&eacute;forme</b> des retraites agricoles",
+    "resume": "<p>Le texte   a été adopté&nbsp;à l'unanimité.</p><p>Il entre en vigueur en janvier.</p>",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-html"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "propre-encodage",
+    "source": "la_depeche",
+    "flux": "une",
+    "lien": "https://la_depeche.fr/article/propre-encodage",
+    "titre": "Ã‰lection municipale : la mairie de Toulouse change de majoritÃ©",
+    "resume": "Le nouveau maire sera installÃ© samedi.",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-encodage"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "propre-programme",
+    "source": "sud_ouest",
+    "flux": "une",
+    "lien": "https://sud_ouest.fr/article/propre-programme",
+    "titre": "Le programme de Jean-Luc Mélenchon publié en librairie ce jeudi",
+    "resume": "Un livre de 200 pages qui détaille les propositions du candidat.",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-programme"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "propre-partenariat",
+    "source": "nice_matin",
+    "flux": "une",
+    "lien": "https://nice_matin.fr/article/propre-partenariat",
+    "titre": "Saorge : scientifiques et artistes réunis autour de la ressource en eau",
+    "resume": "Le projet est mené en partenariat avec l'association Remontons la Roya.",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-partenariat"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "r01-lien",
+    "source": "nice_matin",
+    "flux": "une",
+    "lien": "https://www.nicematin.com/guide-conso/lego-pere-noel-10758192",
+    "titre": "LEGO Père Noël : -30 % sur ce set à construire en famille",
+    "resume": "Une économie de 18 euros.",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r01-lien"
+    },
+    "_attendu": "R01_publi"
+  },
+  {
+    "id": "r01-texte",
+    "source": "ouest_france",
+    "flux": "une",
+    "lien": "https://ouest_france.fr/article/r01-texte",
+    "titre": "Isoler sa maison avant l'hiver : nos conseils pour réduire la facture",
+    "resume": "Contenu partenaire proposé par une enseigne de bricolage.",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r01-texte"
+    },
+    "_attendu": "R01_publi"
+  },
+  {
+    "id": "r02",
+    "source": "le_figaro",
+    "flux": "une",
+    "lien": "https://le_figaro.fr/article/r02",
+    "titre": "Horoscope du jour : ce que les astres réservent au Bélier",
+    "resume": "",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r02"
+    },
+    "_attendu": "R02_horoscope"
+  },
+  {
+    "id": "r03",
+    "source": "liberation",
+    "flux": "une",
+    "lien": "https://liberation.fr/article/r03",
+    "titre": "Programme TV : que regarder ce soir sur France 2 et TF1 ?",
+    "resume": "",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r03"
+    },
+    "_attendu": "R03_programme_tv"
+  },
+  {
+    "id": "r04",
+    "source": "la_depeche",
+    "flux": "une",
+    "lien": "https://la_depeche.fr/article/r04",
+    "titre": "Loto : il découvre plusieurs semaines après le tirage qu'il a gagné le jackpot",
+    "resume": "",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": "Loto - EuroMillions",
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r04"
+    },
+    "_attendu": "R04_jeux"
+  },
+  {
+    "id": "r05",
+    "source": "franceinfo",
+    "flux": "une",
+    "lien": "https://franceinfo.fr/article/r05",
+    "titre": "  Direct  ",
+    "resume": "",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r05"
+    },
+    "_attendu": "R05_titre_vide"
+  },
+  {
+    "id": "r06",
+    "source": "le_monde",
+    "flux": "une",
+    "lien": "https://le_monde.fr/article/r06",
+    "titre": "Conseil des ministres : les annonces attendues sur le logement",
+    "resume": "",
+    "publie_le": "2026-11-13T09:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r06"
+    },
+    "_attendu": "R06_date_future"
+  },
+  {
+    "id": "r07",
+    "source": "liberation",
+    "flux": "une",
+    "lien": "https://liberation.fr/article/r07",
+    "titre": "Le gouvernement pr�sente son plan pour l'h�pital public",
+    "resume": "",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r07"
+    },
+    "_attendu": "R07_encodage"
+  },
+  {
+    "id": "r08",
+    "source": "la_depeche",
+    "flux": "une",
+    "lien": "https://la_depeche.fr/article/r08",
+    "titre": "CARTE. Prix des carburants : les stations les moins chères de la région",
+    "resume": "",
+    "publie_le": "2026-11-12T07:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r08"
+    },
+    "_attendu": "R08_hors_actu"
+  },
+  {
+    "id": "r09",
+    "source": "franceinfo",
+    "flux": "une",
+    "lien": "https://franceinfo.fr/article/r09",
+    "titre": "Midterms 2026 : les démocrates reprennent la Chambre des représentants",
+    "resume": "",
+    "publie_le": "2026-11-07T22:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r09"
+    },
+    "_attendu": "R09_perime"
+  },
+  {
+    "id": "r10",
+    "source": "le_monde",
+    "flux": "politique",
+    "lien": "https://www.lemonde.fr/politique/budget-secu.html?utm_source=rss&utm_medium=flux#xtor=RSS-1",
+    "titre": "Budget de la Sécu : le Parlement adopte le texte en dernière lecture",
+    "resume": "",
+    "publie_le": "2026-11-12T06:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r10"
+    },
+    "_attendu": "R10_doublon_exact"
+  },
+  {
+    "id": "propre-depeche",
+    "source": "sud_ouest",
+    "flux": "une",
+    "lien": "https://sud_ouest.fr/article/propre-depeche",
+    "titre": "Un séisme de magnitude 6,1 frappe le sud de la Turquie, aucune victime signalée",
+    "resume": "",
+    "publie_le": "2026-11-12T06:10:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-depeche"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "r11",
+    "source": "ouest_france",
+    "flux": "une",
+    "lien": "https://ouest_france.fr/article/r11",
+    "titre": "Un séisme de magnitude 6,1 frappe le sud de la Turquie, aucune victime signalée",
+    "resume": "",
+    "publie_le": "2026-11-12T06:40:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r11"
+    },
+    "_attendu": "R11_depeche_reprise"
+  },
+  {
+    "id": "propre-immeuble",
+    "source": "franceinfo",
+    "flux": "une",
+    "lien": "https://franceinfo.fr/article/propre-immeuble",
+    "titre": "Un immeuble s'effondre à New York et fait au moins deux morts et 17 blessés",
+    "resume": "",
+    "publie_le": "2026-11-12T04:00:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-propre-immeuble"
+    },
+    "_attendu": null
+  },
+  {
+    "id": "r12",
+    "source": "liberation",
+    "flux": "une",
+    "lien": "https://liberation.fr/article/r12",
+    "titre": "Un immeuble s’effondre à New York, au moins deux morts et 17 blessés",
+    "resume": "",
+    "publie_le": "2026-11-12T04:30:00+00:00",
+    "recupere_le": "2026-11-12T08:00:00+00:00",
+    "rubrique": null,
+    "payload": {
+      "author": "Jeanne Exemple",
+      "id": "guid-r12"
+    },
+    "_attendu": "R12_doublon_approx"
+  }
+]

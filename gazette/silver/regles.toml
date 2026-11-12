@@ -1,0 +1,99 @@
+# Règles d'exclusion de la couche silver : ce qui n'a rien à faire dans une gazette.
+# Documentées dans docs/qualite.md (nom, ce qu'elle écarte, pourquoi, un exemple).
+#
+# Les règles s'appliquent dans l'ordre du fichier ; la première qui reconnaît un article le
+# rejette, et c'est son identifiant qui est gardé dans la table rejets (et compté au rapport).
+#
+# Règles à motifs (type = "motifs") : expressions régulières, insensibles à la casse, cherchées
+#   - lien      : dans l'URL de l'article ;
+#   - titre     : dans le titre seul ;
+#   - texte     : dans le titre et l'extrait ;
+#   - rubriques : rubrique RSS exacte (casse et accents ignorés).
+# Les autres types sont codés dans gazette/silver/regles.py, avec leurs seuils ci-dessous.
+
+[seuils]
+longueur_titre_min = 15        # R05 : en dessous, le titre est vide ou inutilisable
+avance_toleree_min = 10        # R06 : publié plus de 10 min « après » sa réception = date future
+age_max_h = 48                 # R09 : publié plus de 48 h avant sa réception = pas l'actualité du jour
+fenetre_doublons_h = 48        # R10-R12 : on compare aux articles gardés ces 48 dernières heures
+jaccard_min = 0.7              # R12 : part de mots en commun à partir de laquelle deux titres sont le même
+mots_min_jaccard = 5           # R12 : titres trop courts pour être comparés en Jaccard
+
+[controles]
+taux_rejet_max = 0.8           # contrôle taux_rejet_par_source : au-delà, une règle est trop gourmande
+articles_min_taux = 10         # … calculé seulement pour une source avec au moins 10 articles entrés
+fraicheur_max_h = 6            # contrôle fraicheur : un article propre de moins de 6 h par source active
+
+[[regles]]
+id = "R01_publi"
+nom = "Publi-reportage, contenu partenaire, bon plan"
+type = "motifs"
+lien = ['/guide-conso/', '/partenaires?/', '/publi[-_]', 'brand[-_]?content', '/bons?-plans?/', 'sponsoris', '/shopping/']
+texte = ['\bcontenus? partenaires?\b', '\bpubli-?reportage', '\bpubli-?r[ée]dactionnel', '\bcode promo\b', '\bbons? plans?\b', '\bvente flash\b', '\bblack friday\b']
+rubriques = ['Partenaires', 'Contenu partenaire', 'Bons plans', 'Guide conso', 'Shopping', 'Publi-reportage']
+
+[[regles]]
+id = "R02_horoscope"
+nom = "Horoscope, astrologie"
+type = "motifs"
+lien = ['/horoscope', '/astro']
+texte = ['\bhoroscope\b', '\bastrologi', '\bsignes? du zodiaque\b']
+rubriques = ['Horoscope', 'Astrologie', 'Astro']
+
+[[regles]]
+id = "R03_programme_tv"
+nom = "Programme TV"
+type = "motifs"
+lien = ['/programme-tv', '/tele/programme']
+titre = ['\bprogrammes? (tv|t[ée]l[ée])\b', '\bce soir (à|sur) la (t[ée]l[ée]|tv)\b', '\bque regarder ce soir\b']
+rubriques = ['Programme TV', 'Programmes TV', 'Télévision', 'Télé']
+
+[[regles]]
+id = "R04_jeux"
+nom = "Jeux, concours, loterie"
+type = "motifs"
+lien = ['/jeux?/', 'espace-jeux', 'jeu-concours', '/loto/', '/euromillions']
+titre = ['\bquiz\b', '\bjeux?[- ]concours\b', '\bgagnez\b', '\bmots? (crois[ée]s|fl[ée]ch[ée]s)\b', '\bsudoku\b', '\bespace jeux\b', '\btirage du (loto|euromillions)\b']
+rubriques = ['Jeux', 'Loto - EuroMillions', 'Loto', 'EuroMillions', 'Concours']
+
+[[regles]]
+id = "R05_titre_vide"
+nom = "Titre vide ou trop court"
+type = "titre_vide"
+
+[[regles]]
+id = "R06_date_future"
+nom = "Date de publication dans le futur"
+type = "date_future"
+
+[[regles]]
+id = "R07_encodage"
+nom = "Encodage cassé, irréparable"
+type = "encodage"
+
+[[regles]]
+id = "R08_hors_actu"
+nom = "Contenu de service ou intemporel (carte, replay, dessin du jour)"
+type = "motifs"
+lien = ['/le-dessin-du-jour/', '/dessin-du-jour']
+titre = ['^\s*(CARTE|CARTES|REPLAY|INFOGRAPHIE)\s*[.:]', '^\s*le dessin du (lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|jour)\b']
+
+[[regles]]
+id = "R09_perime"
+nom = "Article ancien remonté dans le flux"
+type = "perime"
+
+[[regles]]
+id = "R10_doublon_exact"
+nom = "Doublon exact (même lien, ou même titre dans le même journal)"
+type = "doublon_exact"
+
+[[regles]]
+id = "R11_depeche_reprise"
+nom = "Dépêche reprise à l'identique par un autre journal"
+type = "depeche_reprise"
+
+[[regles]]
+id = "R12_doublon_approx"
+nom = "Doublon approximatif (même titre à quelques mots près)"
+type = "doublon_approx"

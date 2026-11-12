@@ -36,3 +36,102 @@ quand même les prévoir (titre vide ou null, rubriques
   sur `publie_le` (par exemple, moins de 48 h) avant de faire la gazette du jour.
 - **Vidéos.** Sud Ouest et La Dépêche préfixent `VIDÉO.` / `VIDÉOS.` : le chapô est souvent
   court, à garder mais à pondérer pour le regroupement.
+
+---
+
+# Les règles d'exclusion (TD 4)
+
+> Le code : `gazette/silver/regles.py`. Les motifs et les seuils : **`gazette/silver/regles.toml`**
+> (on ajuste une règle sans toucher au code). Les tests : `tests/test_silver.py`, sur la fixture
+> `tests/fixtures/bronze_echantillon.json` (au moins un article par règle, plus des pièges).
+
+Chaque article passe d'abord par la **normalisation** (`gazette/silver/normalisation.py` : encodage
+réparé, HTML retiré, entités décodées, espaces, date en UTC, lien sans paramètres de suivi, extrait
+de 300 caractères au plus), puis par les règles **dans l'ordre** : la première qui le reconnaît le
+rejette, et son identifiant est gardé dans la table `rejets` (colonne `regle`, avec un `detail` :
+le motif reconnu, le score de ressemblance…). Un article qu'aucune règle ne reconnaît va dans
+`articles_propres`.
+
+Pour les doublons (R10 à R12), le **premier publié est gardé**, les suivants sont rejetés avec
+`doublon_de` = l'id de celui qu'ils répètent. On compare au passage en cours et aux articles
+gardés depuis 48 h.
+
+| Règle | Ce qu'elle écarte | Pourquoi | Comment (regles.toml) | Exemple réel |
+|---|---|---|---|---|
+| `R01_publi` | Publi-reportages, contenus partenaires, bons plans | Contenu payé ou commercial, pas de l'information | Lien (`/guide-conso/`, `/partenaires/`, `brand-content`…), texte (« contenu partenaire », « publireportage », « code promo », « bon plan »…), rubriques | Nice-Matin, « LEGO Père Noël : -30 % sur ce set… » (`/guide-conso/`) |
+| `R02_horoscope` | Horoscope, astrologie | Pas de l'actualité, le même texte chaque jour | Lien `/horoscope`, texte « horoscope », « astrologie », rubriques | (aucun le 12/11 ; fixture : « Horoscope du jour : ce que les astres réservent au Bélier ») |
+| `R03_programme_tv` | Programmes TV | Contenu de service | Titre « programme TV », « que regarder ce soir »…, rubriques `Télévision`… Pas le mot « programme » seul : « le programme de Mélenchon » est de l'actualité | (fixture : « Programme TV : que regarder ce soir sur France 2 et TF1 ? ») |
+| `R04_jeux` | Jeux, concours, loterie | Divertissement ou promotion | Lien `/jeux/`, `espace-jeux`, titre « quiz », « jeu-concours », « sudoku »…, rubrique `Loto - EuroMillions` | La Dépêche, « La Dépêche du Midi lance son espace jeux… » |
+| `R05_titre_vide` | Titre vide ou de moins de 15 caractères | Illisible, impossible à regrouper | Seuil `longueur_titre_min` | (fixture : « Direct ») |
+| `R06_date_future` | Publié plus de 10 min *après* sa réception | Date fausse ou fuseau mal lu : fausserait le classement par jour | Seuil `avance_toleree_min` | (fixture : publié le 13/11, reçu le 12/11) |
+| `R07_encodage` | Encodage cassé qu'on n'a pas su réparer (`Ã©`, `�`) | Illisible, et deux titres identiques ne se reconnaissent plus | Réparation d'abord (`Ã©` → `é`), rejet seulement s'il en reste | (fixture : « Le gouvernement pr�sente… ») |
+| `R08_hors_actu` | Cartes et pages de service, replays, dessin du jour | Mis à jour en continu ou sans texte : pas une actualité du jour | Titre commençant par `CARTE.`, `REPLAY.`, « Le dessin du jeudi… », lien `/le-dessin-du-jour/` | La Dépêche, « CARTE. Prix des carburants… » ; Sud Ouest, « Le dessin du jeudi 11 novembre… » |
+| `R09_perime` | Publié plus de 48 h avant sa collecte | Article ancien remonté dans le flux | Seuil `age_max_h` | Franceinfo, « RESULTATS. Triomphe des démocrates aux midterms 2026… » (5 jours) |
+| `R10_doublon_exact` | Même lien (sans `utm_*`/`xtor`), ou même titre dans le même journal | Le même article compté deux fois | Lien normalisé, titre réduit (minuscules, sans accents ni ponctuation) | (fixture : même article Le Monde dans deux flux, lien avec `?utm_source=rss`) |
+| `R11_depeche_reprise` | Même titre, mot pour mot, chez un autre journal | Dépêche d'agence reprise à l'identique : un fait pèserait autant que le nombre de journaux qui le reprennent | Titre réduit identique, source différente | Ouest-France, « Le Royaume-Uni nomme un « émissaire pour la sécurité climatique »… » (déjà chez Nice-Matin) |
+| `R12_doublon_approx` | Même titre à quelques mots près | Le même fait raconté deux fois | Jaccard sur les mots porteurs du titre ≥ `jaccard_min` (0,7), titres d'au moins 5 mots | Libération, « Un immeuble s'effondre à New York, au moins deux morts et 17 blessés » ≈ Sud Ouest (0,80) |
+
+### Le seuil du doublon approximatif
+
+Mesuré sur la collecte du 12/11 (319 articles) :
+
+| `jaccard_min` | Doublons trouvés | Faux positifs (relus à la main) |
+|---:|---:|---:|
+| 0,6 | 9 | 0 |
+| 0,7 (retenu) | 8 | 0 |
+| 0,8 | 5 | 0 |
+
+À 0,8, on rate « Avec la hausse du smic, 164 branches… » ≈ « Hausse du smic : 164 branches
+professionnelles… » ou « Gérald Passedat quitte son mythique restaurant… » ≈ « Gérald Passedat,
+chef triplement étoilé, vend son mythique restaurant… » (0,73). 0,6 ne fait gagner qu'un doublon :
+on reste à 0,7 tant qu'on n'a pas relu plus de jours.
+
+## Le premier passage, sur la collecte réelle du 12/11
+
+Passage lancé par la collecte planifiée de 11 h dans la stack Docker : 342 entrés, 321 gardés,
+**21 rejetés (6 %)** : R12 ×10, R08 ×5, R04 ×2, R09 ×2, R01 ×1, R11 ×1. Taux de rejet par
+source : de 2 % (Libération) à 15 % (Franceinfo, qui reprend des sujets déjà publiés ailleurs).
+Aucune règle n'écarte plus de 30 % d'une source ; les 5 contrôles sont vrais. Le rapport
+complet : `rapports/qualite-2026-11-12.md`.
+
+## Les contrôles de qualité
+
+Ils ne testent pas le code (c'est la CI, sur la fixture) : ils vérifient des **faits sur les vraies
+données**, en base, **après chaque passage** (asset Dagster `silver/rapport_qualite`, lancé après
+chaque collecte). Chacun est un *asset check* : verdict et chiffres dans l'interface Dagster,
+historisés run après run.
+
+| Contrôle | Le fait vérifié | Métrique publiée |
+|---|---|---|
+| `aucune_date_future` | Aucun article propre du jour publié après sa réception (+10 min) | `nb_dates_futures` |
+| `aucun_titre_vide` | Aucun article propre du jour au titre de moins de 15 caractères | `nb_titres_vides` |
+| `taux_rejet_par_source` | Aucune source (≥ 10 articles dans la journée) ne voit plus de 80 % de ses articles rejetés | `taux_rejet_<source>` |
+| `aucun_encodage_casse` | Aucun titre ni extrait propre avec des séquences cassées | `nb_encodages_casses` |
+| `aucun_lien_en_double` | Aucun lien présent deux fois dans `articles_propres` | `nb_liens_en_double` |
+
+En plus des checks, chaque passage publie ses chiffres en métadonnées de `silver/articles_propres`
+(`entres`, `gardes`, `rejetes`, `taux_rejet`, et `rejets_R01_publi` … `rejets_R12_doublon_approx`) :
+Dagster les trace d'un run à l'autre (onglet *Plots* de l'asset).
+
+**Assertions maison plutôt qu'un outil dédié.** Great Expectations ou Soda apportent un format de
+règles et des rapports, mais aussi une dépendance lourde, sa configuration et son propre stockage
+des résultats. Ici, cinq requêtes SQL sur SQLite suffisent, et Dagster fournit déjà ce que ces
+outils ajouteraient : affichage, historique, lien avec le run et les données, alerte.
+
+**L'alerte.** Quand un contrôle **devient** faux (et quand il redevient vrai), un message part sur
+le canal de l'équipe : webhook Discord ou Slack, dans `GAZETTE_ALERTE_WEBHOOK` (fichier `.env`).
+On n'alerte pas à chaque passage tant qu'il reste faux (sinon un message toutes les 30 min, que plus
+personne ne lit) : le dernier verdict est gardé dans `etat_controles`. Un run Dagster en échec alerte
+aussi (capteur `alerte_run_en_echec`). Tester le canal :
+`docker compose exec code python -m gazette.alerte "test"`.
+
+## Ajustements
+
+On lit le rapport du jour (sections « Règles trop gourmandes ? » et « Les cinq rejets les plus
+fréquents »), et on note ici ce qu'on change dans `regles.toml`, et pourquoi.
+
+| Date | Règle | Changement | Pourquoi |
+|---|---|---|---|
+| 12/11/2026 | `R01_publi` | Retiré le motif « en partenariat avec » | Faux positif au premier passage : Nice-Matin, « C'est quoi ce projet mené dans la vallée de la Roya… », un vrai article sur un projet « en partenariat avec l'association Remontons la Roya ». |
+| 12/11/2026 | `R03_programme_tv` | Motif sur « programme TV », pas sur « programme » seul | « Le programme de Jean-Luc Mélenchon publié en librairie » est de l'actualité (gardé dans la fixture). |
+| 12/11/2026 | `R12_doublon_approx` | `jaccard_min` à 0,7 et non 0,8 | Voir « Le seuil du doublon approximatif » ci-dessus. |
