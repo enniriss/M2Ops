@@ -38,7 +38,7 @@ services:
     command: ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "gazette.definitions"]
     volumes:
       - dagster_storage:/opt/dagster/storage
-      # Données du pipeline visibles en local : ./data/<étape>/date=AAAA-MM-JJ/<journal>/
+      # Données du pipeline visibles en local : ./data/articles_bruts/date=AAAA-MM-JJ/<journal>/ et ./data/gazette.db
       - ./data:/data
     healthcheck:
       test: ["CMD", "dagster", "api", "grpc-health-check", "-p", "4000"]
@@ -58,7 +58,7 @@ services:
       code:
         condition: service_healthy
 
-  # Démon : déclenche le schedule de 6 h et dépile la file des runs.
+  # Démon : déclenche la collecte toutes les 30 min et dépile la file des runs.
   daemon:
     <<: *dagster
     command: ["dagster-daemon", "run", "-w", "/opt/dagster/dagster_home/workspace.yaml"]

@@ -1,53 +1,60 @@
-"""Couche bronze : réponses RSS brutes, un fichier Parquet par flux collecté, jamais réécrit.
+"""Couche bronze : les articles bruts, en fichiers JSON jamais réécrits.
 
 Un asset par journal, pour que l'échec d'une source n'empêche pas les autres
 de tourner et que chaque source ait ses propres relances et son propre check.
 
-Arborescence produite :
-    $GAZETTE_DATA_DIR/bronze/date=AAAA-MM-JJ/<slug>/<flux>_<horodatage UTC>.parquet
-    $GAZETTE_DATA_DIR/bronze/date=AAAA-MM-JJ/<slug>/<flux>_<horodatage UTC>.json     (mêmes articles, lisibles)
+Arborescence produite (voir docs/donnees.md pour le détail des champs) :
+    $GAZETTE_DATA_DIR/articles_bruts/date=AAAA-MM-JJ/<slug>/<flux>_<horodatage UTC>.json
+    $GAZETTE_DATA_DIR/articles_bruts/date=AAAA-MM-JJ/<slug>/<flux>_<horodatage UTC>.xml
 
-Chaque fichier contient une ligne par article, champs RSS tels que le flux les donne
-(aucun nettoyage : c'est le rôle de silver). La réponse XML complète et le contexte HTTP
-sont conservés dans les métadonnées du fichier (clés gazette.xml_brut et gazette.http).
+Le JSON contient une entrée par article nouveau : id, source, lien, titre, resume, publie_le,
+recupere_le, rubrique, et payload (l'item tel que feedparser l'a lu, sans nettoyage : c'est le
+rôle de silver). Le XML est la réponse HTTP complète, pour pouvoir tout relire plus tard.
 
 Pas de doublon : un article déjà écrit pour (source, lien) n'est pas réécrit, quel que soit le
-jour ou le flux où il avait été collecté (l'id RSS sert de clé quand il n'a pas de lien). Les
-clés connues sont relues dans les Parquet existants. Un flux sans aucun article nouveau
-n'écrit aucun fichier : les articles ignorés sont comptés dans les métadonnées du run.
+jour ou le flux où il avait été collecté (le guid RSS sert de clé quand il n'a pas de lien). Un
+flux sans aucun article nouveau n'écrit aucun fichier.
+
+Requêtes conditionnelles : l'ETag et le Last-Modified de la dernière réponse sont gardés dans la
+table sources et renvoyés en If-None-Match / If-Modified-Since. Un flux inchangé répond 304 :
+rien n'est téléchargé ni écrit.
 
 Erreurs de collecte : une erreur transitoire (5xx, 408, 429, timeout, connexion) se règle par
-les relances de Dagster. Une erreur permanente (404, 410...) n'est pas relancée : elle est
-comptée dans etat/<slug>/<flux>.json, et trois échecs de suite mettent le flux en sommeil
-(voir etat.py). Le check sources_actives reste en échec tant qu'un flux dort.
+les relances (backoff de la session HTTP, puis RetryPolicy de Dagster). Une erreur permanente
+(404, 410...) n'est pas relancée : elle est comptée dans la table sources, et trois échecs de
+suite mettent le flux en sommeil (voir etat.py). Le check sources_actives reste en échec tant
+qu'un flux dort.
 """
 
+import hashlib
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import dagster as dg
 import feedparser
-import pyarrow as pa
-import pyarrow.parquet as pq
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from gazette.bronze.etat import (
     SEUIL_SOMMEIL,
+    EtatFlux,
     ecrire_etat,
     lire_etat,
     noter_echec_permanent,
     noter_reussite,
+    synchroniser_sources,
 )
 from gazette.bronze.sources import Flux, Source, charger_sources
 from gazette.partitions import partitions_quotidiennes
 
 DATA_DIR = Path(os.environ.get("GAZETTE_DATA_DIR", "data"))
+DOSSIER_ARTICLES = "articles_bruts"
 USER_AGENT = "GazetteBot/0.1 (projet etudiant M2Ops Efrei; lecture des flux RSS publics)"
 TIMEOUT_S = 30
 HTTP_RETRIES = 3
@@ -70,54 +77,68 @@ def est_transitoire(erreur: requests.RequestException) -> bool:
     return isinstance(erreur, requests.ConnectionError | requests.Timeout)
 
 
-SCHEMA_BRONZE = pa.schema(
-    [
-        ("source", pa.string()),
-        ("flux", pa.string()),
-        ("url_flux", pa.string()),
-        ("recu_le", pa.timestamp("us", tz="UTC")),
-        ("rang", pa.int32()),
-        ("id", pa.string()),
-        ("title", pa.string()),
-        ("link", pa.string()),
-        ("summary", pa.string()),
-        ("published", pa.string()),
-        ("updated", pa.string()),
-        ("author", pa.string()),
-        ("tags", pa.list_(pa.string())),
-    ]
-)
-
-
 def ecrire_immuable(chemin: Path, contenu: bytes) -> None:
-    """Écrit un fichier qui ne doit jamais exister déjà : le bronze ne se réécrit pas."""
+    """Écrit un fichier qui ne doit jamais exister déjà : le brut ne se réécrit pas."""
     chemin.parent.mkdir(parents=True, exist_ok=True)
     with open(chemin, "xb") as f:
         f.write(contenu)
 
 
-def en_parquet(table: pa.Table) -> bytes:
-    tampon = pa.BufferOutputStream()
-    pq.write_table(table, tampon, compression="zstd")
-    return tampon.getvalue().to_pybytes()
+def _vers_json(valeur):
+    """Ce que json ne sait pas écrire dans un item feedparser : surtout les dates struct_time."""
+    if isinstance(valeur, time.struct_time):
+        return datetime(*valeur[:6], tzinfo=timezone.utc).isoformat()
+    return str(valeur)
 
 
-def en_json(table: pa.Table) -> bytes:
-    """Les mêmes articles que le Parquet, lisibles dans un éditeur (le XML brut n'y est pas)."""
-    return json.dumps(table.to_pylist(), ensure_ascii=False, indent=2, default=str).encode("utf-8")
+def en_json(articles: list[dict]) -> bytes:
+    return json.dumps(articles, ensure_ascii=False, indent=2, default=_vers_json).encode("utf-8")
 
 
 def cle_article(entree: dict) -> str | None:
-    """Clé naturelle d'un article au sein d'une source : son lien, à défaut son id RSS."""
+    """Clé naturelle d'un article au sein d'une source : son lien, à défaut son guid RSS."""
     return entree.get("link") or entree.get("id")
 
 
+def id_article(source: str, cle: str | None) -> str:
+    """Identifiant stable, dérivé de la clé (source, lien) ; aléatoire si l'article n'en a pas."""
+    if cle is None:
+        return uuid.uuid4().hex
+    return hashlib.sha256(f"{source}\n{cle}".encode("utf-8")).hexdigest()[:32]
+
+
+def date_iso(entree: dict) -> str | None:
+    """Date de publication en ISO 8601 UTC, quel que soit le format d'origine (RSS pubDate, Atom
+    published ou updated). feedparser fait l'analyse ; à défaut, la chaîne telle quelle."""
+    for champ in ("published", "updated"):
+        analysee = entree.get(f"{champ}_parsed")
+        if analysee:
+            return datetime(*analysee[:6], tzinfo=timezone.utc).isoformat()
+    return entree.get("published") or entree.get("updated")
+
+
+def article_brut(source: str, flux: Flux, entree: dict, recupere_le: datetime) -> dict:
+    tags = [t.get("term") for t in entree.get("tags", []) if t.get("term")]
+    return {
+        "id": id_article(source, cle_article(entree)),
+        "source": source,
+        "flux": flux.nom,
+        "lien": entree.get("link"),
+        "titre": entree.get("title"),
+        "resume": entree.get("summary"),
+        "publie_le": date_iso(entree),
+        "recupere_le": recupere_le.isoformat(),
+        "rubrique": tags[0] if tags else None,
+        "payload": dict(entree),
+    }
+
+
 def cles_deja_ecrites(slug: str) -> set[str]:
-    """Clés des articles déjà présents dans le bronze de cette source, tous jours confondus."""
+    """Clés des articles déjà écrits pour cette source, tous jours confondus."""
     cles = set()
-    for fichier in (DATA_DIR / "bronze").glob(f"date=*/{slug}/*.parquet"):
-        for ligne in pq.read_table(fichier, columns=["link", "id"]).to_pylist():
-            cle = ligne["link"] or ligne["id"]
+    for fichier in (DATA_DIR / DOSSIER_ARTICLES).glob(f"date=*/{slug}/*.json"):
+        for article in json.loads(fichier.read_text(encoding="utf-8")):
+            cle = article.get("lien") or (article.get("payload") or {}).get("id")
             if cle:
                 cles.add(cle)
     return cles
@@ -140,41 +161,6 @@ def articles_nouveaux(entrees: list, cles_connues: set[str]) -> list[tuple[int, 
     return nouveaux
 
 
-def table_bronze(
-    source: str,
-    flux: Flux,
-    recu_le: datetime,
-    xml: bytes,
-    contexte: dict,
-    articles: list[tuple[int, dict]],
-) -> pa.Table:
-    lignes = [
-        {
-            "source": source,
-            "flux": flux.nom,
-            "url_flux": flux.url,
-            "recu_le": recu_le,
-            "rang": rang,
-            "id": entree.get("id"),
-            "title": entree.get("title"),
-            "link": entree.get("link"),
-            "summary": entree.get("summary"),
-            "published": entree.get("published"),
-            "updated": entree.get("updated"),
-            "author": entree.get("author"),
-            "tags": [t.get("term") for t in entree.get("tags", [])],
-        }
-        for rang, entree in articles
-    ]
-    schema = SCHEMA_BRONZE.with_metadata(
-        {
-            "gazette.xml_brut": xml,
-            "gazette.http": json.dumps(contexte, ensure_ascii=False).encode("utf-8"),
-        }
-    )
-    return pa.Table.from_pylist(lignes, schema=schema)
-
-
 def creer_session() -> requests.Session:
     session = requests.Session()
     retry = Retry(
@@ -193,39 +179,53 @@ def creer_session() -> requests.Session:
     return session
 
 
+def entetes_conditionnels(etat: EtatFlux) -> dict[str, str]:
+    entetes = {}
+    if etat.etag:
+        entetes["If-None-Match"] = etat.etag
+    if etat.last_modified:
+        entetes["If-Modified-Since"] = etat.last_modified
+    return entetes
+
+
 def collecter_flux(
-    session: requests.Session, source: str, flux: Flux, dossier: Path, cles_connues: set[str]
+    session: requests.Session,
+    source: str,
+    flux: Flux,
+    etat: EtatFlux,
+    dossier: Path,
+    cles_connues: set[str],
 ) -> dict:
-    reponse = session.get(flux.url, timeout=TIMEOUT_S)
+    """Interroge un flux et écrit ses articles nouveaux ; met à jour etag et last_modified."""
+    reponse = session.get(flux.url, timeout=TIMEOUT_S, headers=entetes_conditionnels(etat))
     reponse.raise_for_status()
-    recu_le = datetime.now(timezone.utc)
+    recupere_le = datetime.now(timezone.utc)
+    vide = {"nb_recus": 0, "nb_ecrits": 0, "nb_ignores": 0, "fichier": None}
 
-    contexte = {
-        "url": flux.url,
-        "url_finale": reponse.url,
-        "statut_http": reponse.status_code,
-        "content_type": reponse.headers.get("Content-Type"),
-        "etag": reponse.headers.get("ETag"),
-        "last_modified": reponse.headers.get("Last-Modified"),
-        "recu_le": recu_le.isoformat(),
-        "octets": len(reponse.content),
-    }
+    if reponse.status_code == 304:  # rien de neuf depuis la dernière réponse
+        return {**vide, "non_modifie": True, "octets": 0}
+
+    etat.etag = reponse.headers.get("ETag")
+    etat.last_modified = reponse.headers.get("Last-Modified")
     entrees = feedparser.parse(reponse.content).entries
-    articles = articles_nouveaux(entrees, cles_connues)
-    compteurs = {
+    nouveaux = articles_nouveaux(entrees, cles_connues)
+    resultat = {
+        **vide,
+        "non_modifie": False,
+        "octets": len(reponse.content),
         "nb_recus": len(entrees),
-        "nb_ecrits": len(articles),
-        "nb_ignores": len(entrees) - len(articles),
+        "nb_ecrits": len(nouveaux),
+        "nb_ignores": len(entrees) - len(nouveaux),
     }
-    if not articles:
-        return {**contexte, **compteurs, "fichier": None}
+    if not nouveaux:
+        return resultat
 
-    table = table_bronze(source, flux, recu_le, reponse.content, contexte, articles)
-    base = dossier / f"{flux.nom}_{recu_le:%Y%m%dT%H%M%S%fZ}"
-    fichier = Path(f"{base}.parquet")
-    ecrire_immuable(fichier, en_parquet(table))
-    ecrire_immuable(Path(f"{base}.json"), en_json(table))
-    return {**contexte, **compteurs, "fichier": str(fichier)}
+    articles = [article_brut(source, flux, entree, recupere_le) for _, entree in nouveaux]
+    base = dossier / f"{flux.nom}_{recupere_le:%Y%m%dT%H%M%S%fZ}"
+    fichier = Path(f"{base}.json")
+    ecrire_immuable(Path(f"{base}.xml"), reponse.content)
+    ecrire_immuable(fichier, en_json(articles))
+    return {**resultat, "fichier": str(fichier)}
 
 
 def construire_asset_bronze(source: Source) -> dg.AssetsDefinition:
@@ -236,13 +236,13 @@ def construire_asset_bronze(source: Source) -> dg.AssetsDefinition:
         group_name="bronze",
         partitions_def=partitions_quotidiennes,
         retry_policy=relances,
-        description=f"Flux RSS bruts de {source.nom} ({source.type}, {source.region}), Parquet immuable.",
+        description=f"Articles bruts de {source.nom} ({source.type}, {source.region}), JSON immuable.",
         metadata={"journal": source.nom, "type": source.type, "region": source.region},
         check_specs=[
             dg.AssetCheckSpec(
                 CHECK_AU_MOINS_UN_ARTICLE,
                 asset=cle,
-                description="La source a renvoyé au moins un article (même déjà collecté).",
+                description="La source a renvoyé au moins un article, ou répondu 304 (inchangée).",
             ),
             dg.AssetCheckSpec(
                 CHECK_SOURCES_ACTIVES,
@@ -259,8 +259,9 @@ def construire_asset_bronze(source: Source) -> dg.AssetsDefinition:
                 "articles du moment, les fichiers collectés reflètent donc le flux actuel."
             )
 
-        dossier = DATA_DIR / "bronze" / f"date={date}" / source.slug
+        dossier = DATA_DIR / DOSSIER_ARTICLES / f"date={date}" / source.slug
         debut = time.monotonic()
+        synchroniser_sources(DATA_DIR, [source])
         cles_connues = cles_deja_ecrites(source.slug)
         etats = {flux.nom: lire_etat(DATA_DIR, source.slug, flux.nom) for flux in source.flux}
         flux_actifs = [flux for flux in source.flux if etats[flux.nom].actif]
@@ -278,7 +279,7 @@ def construire_asset_bronze(source: Source) -> dg.AssetsDefinition:
                 etat = etats[flux.nom]
                 try:
                     collectes.append(
-                        collecter_flux(session, source.slug, flux, dossier, cles_connues)
+                        collecter_flux(session, source.slug, flux, etat, dossier, cles_connues)
                     )
                 except requests.RequestException as erreur:
                     context.log.warning(f"Flux {flux.nom} ({flux.url}) en échec : {erreur}")
@@ -313,15 +314,18 @@ def construire_asset_bronze(source: Source) -> dg.AssetsDefinition:
         nb_recus = sum(c["nb_recus"] for c in collectes)
         nb_ecrits = sum(c["nb_ecrits"] for c in collectes)
         nb_ignores = sum(c["nb_ignores"] for c in collectes)
+        nb_non_modifies = sum(c["non_modifie"] for c in collectes)
+        # La ligne de journal de la source : ce qu'elle a reçu, écrit, ignoré, et en combien de temps.
         context.log.info(
-            f"{source.nom} : {nb_recus} reçus, {nb_ecrits} écrits, {nb_ignores} ignorés "
-            f"en {duree_s} s"
+            f"{source.nom} : {nb_recus} reçus, {nb_ecrits} écrits, {nb_ignores} ignorés, "
+            f"{nb_non_modifies} flux non modifiés (304), {len(echecs)} en échec, en {duree_s} s"
         )
         return dg.MaterializeResult(
             metadata={
                 "nb_recus": nb_recus,
                 "nb_ecrits": nb_ecrits,
                 "nb_ignores": nb_ignores,
+                "nb_non_modifies": nb_non_modifies,
                 "nb_flux_ok": len(collectes),
                 "nb_flux_en_echec": len(echecs),
                 "flux_en_echec": echecs,
@@ -333,9 +337,9 @@ def construire_asset_bronze(source: Source) -> dg.AssetsDefinition:
             check_results=[
                 dg.AssetCheckResult(
                     check_name=CHECK_AU_MOINS_UN_ARTICLE,
-                    passed=nb_recus > 0,
+                    passed=nb_recus > 0 or nb_non_modifies > 0,
                     severity=dg.AssetCheckSeverity.ERROR,
-                    metadata={"nb_recus": nb_recus},
+                    metadata={"nb_recus": nb_recus, "nb_non_modifies": nb_non_modifies},
                 ),
                 dg.AssetCheckResult(
                     check_name=CHECK_SOURCES_ACTIVES,
