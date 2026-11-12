@@ -125,6 +125,13 @@ personne ne lit) : le dernier verdict est gardé dans `etat_controles`. Un run D
 aussi (capteur `alerte_run_en_echec`). Tester le canal :
 `docker compose exec code python -m gazette.alerte "test"`.
 
+**Elle a sonné, le 12/11/2026 vers 11 h 20**, sur le salon Discord de l'équipe, sur les vraies données
+de la stack Docker : on a daté un article propre de Le Monde au 25/12/2026 (comme le ferait une date
+mal lue qui passerait entre les règles), puis relancé `silver/rapport_qualite`.
+
+1. 🔴 « Gazette · contrôle aucune_date_future faux : 1 article(s) propre(s) daté(s) dans le futur »
+2. Date d'origine remise, contrôle relancé : ✅ « Gazette · contrôle aucune_date_future de nouveau vrai »
+
 ## Ajustements
 
 On lit le rapport du jour (sections « Règles trop gourmandes ? » et « Les cinq rejets les plus
