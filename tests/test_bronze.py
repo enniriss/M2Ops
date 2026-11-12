@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import threading
+from contextlib import closing
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
@@ -110,6 +111,53 @@ def test_migration_sources_creee_une_seule_fois(tmp_path):
     versions = [v for (v,) in connexion.execute("SELECT version FROM schema_migrations")]
     assert versions == [1]
     connexion.close()
+
+
+def test_premier_demarrage_huit_sources_en_parallele_sur_une_base_neuve(tmp_path):
+    """Au premier run, les 8 assets ouvrent la base en même temps : une seule migration passe,
+    les autres attendent puis voient qu'elle est faite (pas de « table already exists »)."""
+    depart = threading.Barrier(8)
+    erreurs = []
+
+    def ouvrir():
+        depart.wait()
+        try:
+            db.connecter(tmp_path).close()
+        except Exception as erreur:  # noqa: BLE001 — on veut voir toute erreur
+            erreurs.append(erreur)
+
+    fils = [threading.Thread(target=ouvrir) for _ in range(8)]
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join()
+
+    assert erreurs == []
+    with closing(sqlite3.connect(tmp_path / db.NOM_BASE)) as connexion:
+        assert [v for (v,) in connexion.execute("SELECT version FROM schema_migrations")] == [1]
+
+
+def test_decoupage_du_script_de_migration():
+    script = (
+        "-- en-tête ; avec un point-virgule\n"
+        "CREATE TABLE a (x TEXT DEFAULT 'un;deux'); -- fin de ligne ;\n"
+        "INSERT INTO a VALUES ('trois')\n"  # dernière instruction sans point-virgule
+    )
+    instructions = db.instructions_sql(script)
+    assert len(instructions) == 2
+    assert "'un;deux'" in instructions[0]
+    assert "INSERT INTO a" in instructions[1]
+
+
+def test_une_migration_en_erreur_ne_laisse_rien(tmp_path):
+    (tmp_path / "001_ok.sql").write_text("CREATE TABLE a (x);", encoding="utf-8")
+    (tmp_path / "002_ko.sql").write_text("CREATE TABLE b (x); SELECT * FROM inconnue;", encoding="utf-8")
+    with closing(sqlite3.connect(tmp_path / "t.db", isolation_level=None)) as connexion:
+        with pytest.raises(sqlite3.OperationalError):
+            db.migrer(connexion, tmp_path)
+        tables = {n for (n,) in connexion.execute("SELECT name FROM sqlite_master")}
+        assert tables == {"schema_migrations"}
+        assert not connexion.in_transaction
 
 
 def test_synchroniser_sources_garde_l_etat_et_oublie_l_etag_si_l_url_change(tmp_path):
